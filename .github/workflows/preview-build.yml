@@ -26,6 +26,8 @@ env:
 jobs:
   check:
     name: Check for changes
+    # nightly builds are released from the class repository, not from forks
+    if: github.event_name != 'schedule' || github.repository == 'mjr-deltares/modflow-class-dsd26'
     runs-on: ubuntu-22.04
     outputs:
       sha: ${{ steps.sha.outputs.sha }}

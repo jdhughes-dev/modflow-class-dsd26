@@ -59,8 +59,22 @@ The `wt-uzr-spg` case of `autotest/test_gwf_uzr_wt.py` is skipped, by the test
 filters in `release.yml`, because `uzr-main` changed the SPG input without
 updating it. Remove the filter once the test is fixed on the branch.
 
-The workflow runs nightly and builds only when either branch has changed since
-the last release. Run it by hand from the Actions tab, with `force` to rebuild
-unchanged branches.
+The workflow runs nightly in mjr-deltares/modflow-class-dsd26 and builds only
+when either branch has changed since the last release. Run it by hand from the
+Actions tab, with `force` to rebuild unchanged branches; a fork runs it only by
+hand.
+
+Install the latest build with FloPy:
+
+```shell
+get-modflow --owner mjr-deltares --repo modflow-class-dsd26 :python
+```
+
+and generate the FloPy classes for the merged packages from the DFN asset of the
+same release, unzipped:
+
+```shell
+python -m flopy.mf6.utils.generate_classes --dfnpath <path to unzipped dfns>
+```
 
 These builds are provisional and are not MODFLOW 6 releases.
