@@ -1,0 +1,2 @@
+# rerere compares these byte for byte, so keep their line endings
+.github/rr-cache/** -text
