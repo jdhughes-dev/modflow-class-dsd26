@@ -264,12 +264,6 @@ jobs:
               filters="not test028_sfr_rewet"
             fi
           fi
-          # the vsf-dev spg case has not been updated for the new SPG input
-          if [[ "$filters" != "" ]]; then
-            filters="$filters and not (test_gwf_vsf_wt and spg)"
-          else
-            filters="not (test_gwf_vsf_wt and spg)"
-          fi
           echo "filters=$filters" >> $GITHUB_OUTPUT
 
       - name: Set xcode version (macOS)

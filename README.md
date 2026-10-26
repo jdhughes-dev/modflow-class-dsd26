@@ -12,8 +12,7 @@ neither of which has been merged into MODFLOW 6:
 - the `vsf-dev` branch of
   [mjr-deltares/modflow6](https://github.com/mjr-deltares/modflow6/tree/vsf-dev),
   the Variably Saturated Flow (VSF) Package, which solves the Richards equation
-  for unsaturated flow, which is built from `uzr-main`, the name the branch had
-  before, until `vsf-dev` is pushed,
+  for unsaturated flow,
 
 merged into a single `mf6`.
 
@@ -58,10 +57,6 @@ curl -sL https://raw.githubusercontent.com/christianlangevin/modflow6/feat-swi/.
 ```
 
 and make the same changes again.
-
-The `wt-vsf-spg` case of `autotest/test_gwf_vsf_wt.py` is skipped, by the test
-filters in `release.yml`, because `vsf-dev` changed the SPG input without
-updating it. Remove the filter once the test is fixed on the branch.
 
 The workflow runs nightly in mjr-deltares/modflow-class-dsd26 and builds only
 when either branch has changed since the last release. Run it by hand from the

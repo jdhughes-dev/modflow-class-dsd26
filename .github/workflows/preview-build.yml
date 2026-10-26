@@ -22,8 +22,7 @@ env:
   REPO: christianlangevin/modflow6
   BRANCH: feat-swi
   VSF_REPO: mjr-deltares/modflow6
-  # uzr-main is the name vsf-dev had before; it is used until vsf-dev exists
-  VSF_BRANCHES: vsf-dev uzr-main
+  VSF_BRANCH: vsf-dev
 jobs:
   check:
     name: Check for changes
@@ -33,7 +32,6 @@ jobs:
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
       vsf_sha: ${{ steps.sha.outputs.vsf_sha }}
-      vsf_branch: ${{ steps.sha.outputs.vsf_branch }}
       version: ${{ steps.version.outputs.version }}
       build: ${{ steps.compare.outputs.build }}
     steps:
@@ -56,17 +54,12 @@ jobs:
         working-directory: modflow6
         run: |
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          for vsf_branch in $VSF_BRANCHES; do
-            vsf_sha=$(git ls-remote "https://github.com/${VSF_REPO}.git" "refs/heads/${vsf_branch}" | cut -f 1)
-            [[ -n "$vsf_sha" ]] && break
-          done
+          vsf_sha=$(git ls-remote "https://github.com/${VSF_REPO}.git" "refs/heads/${VSF_BRANCH}" | cut -f 1)
           if [[ -z "$vsf_sha" ]]; then
-            echo "::error::None of the branches ${VSF_BRANCHES} is in ${VSF_REPO}."
+            echo "::error::There is no ${VSF_BRANCH} branch in ${VSF_REPO}."
             exit 1
           fi
-          echo "merging ${vsf_branch} at ${vsf_sha}"
           echo "vsf_sha=$vsf_sha" >> "$GITHUB_OUTPUT"
-          echo "vsf_branch=$vsf_branch" >> "$GITHUB_OUTPUT"
 
       # fail before building if the branches conflict with no recorded resolution
       - name: Merge vsf-dev
@@ -155,7 +148,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ needs.check.outputs.sha }}
           VSF_SHA: ${{ needs.check.outputs.vsf_sha }}
-          VSF_BRANCH: ${{ needs.check.outputs.vsf_branch }}
           VERSION: ${{ needs.check.outputs.version }}
         run: |
           # the UTC time keeps two builds on one day apart and in order
