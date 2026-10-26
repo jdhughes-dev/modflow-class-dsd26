@@ -23,8 +23,10 @@ Each build is posted under [Releases](../../releases), tagged with the UTC date
 and time of the build and the two commits (`YYYYMMDD-HHMM-<feat-swi>-<uzr-main>`);
 the newest is marked Latest, and the last 10 are kept.
 
-`uzr-main` is merged into `feat-swi` in each job that checks out the source, by
-the `.github/actions/merge-uzr` action. The two branches conflict in
+`uzr-main` is merged into `feat-swi` once, in the first job, by the
+`.github/actions/merge-uzr` action; the merge commit is passed to the build,
+documentation, and distribution jobs as a git bundle, so every platform builds
+the same source. The two branches conflict in
 `src/Model/GroundWaterFlow/gwf.f90`; the resolution is recorded in
 `.github/rr-cache` and replayed by `git rerere`. If a change to either branch
 causes a conflict with no recorded resolution, the build stops at the merge in
@@ -46,7 +48,7 @@ The extended Windows build (parallel and NetCDF) is left out. To do that, the
 workflow calls a copy of `.github/workflows/release.yml` from `feat-swi` with
 the extended entries removed from the build and distribution matrices,
 `${{ github.repository_owner }}/modflow6` replaced by `christianlangevin/modflow6`,
-and the `uzr_ref` input and merge steps added. If the release workflow on the
+and steps added to check out the merge commit from the bundle. If the release workflow on the
 branch changes, refresh the copy:
 
 ```shell

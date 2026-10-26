@@ -42,7 +42,6 @@ jobs:
           ref: ${{ env.BRANCH }}
           path: modflow6
           fetch-depth: 0
-          filter: blob:none
 
       - name: Checkout preview build
         uses: actions/checkout@v7
@@ -63,6 +62,19 @@ jobs:
         uses: ./preview/.github/actions/merge-uzr
         with:
           sha: ${{ steps.sha.outputs.uzr_sha }}
+
+      # the build jobs check out this merge rather than repeating it
+      - name: Bundle merge
+        working-directory: modflow6
+        env:
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: git bundle create ../uzr-merge.bundle HEAD "^$SHA"
+
+      - name: Upload merge
+        uses: actions/upload-artifact@v7
+        with:
+          name: uzr-merge
+          path: uzr-merge.bundle
 
       - name: Setup Python
         uses: actions/setup-python@v7
@@ -102,7 +114,6 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       ref: ${{ needs.check.outputs.sha }}
-      uzr_ref: ${{ needs.check.outputs.uzr_sha }}
       releasemode: false
       run_tests: true
       version: ${{ needs.check.outputs.version }}

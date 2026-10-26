@@ -23,18 +23,7 @@ runs:
         cp -R "$rr_cache/." "$git_dir/rr-cache/"
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        # fetch blobs too, so the merge does not request uzr-main objects
-        # from the checkout's own remote
         git fetch https://github.com/mjr-deltares/modflow6.git "$SHA"
-
-        # rerere matches conflicts by their text, so merge with LF line
-        # endings and restore the checkout's line endings afterwards
-        autocrlf=$(git config --get core.autocrlf || true)
-        if [[ -n "$autocrlf" ]]; then
-          git config core.autocrlf false
-          git rm -r -q --cached .
-          git reset -q --hard
-        fi
 
         # the merge stops even when rerere resolves every conflict
         if ! git -c rerere.enabled=true -c rerere.autoupdate=true merge --no-edit FETCH_HEAD; then
@@ -45,11 +34,5 @@ runs:
             exit 1
           fi
           git commit --no-edit
-        fi
-
-        if [[ -n "$autocrlf" ]]; then
-          git config core.autocrlf "$autocrlf"
-          git rm -r -q --cached .
-          git reset -q --hard
         fi
         git log -1 --oneline

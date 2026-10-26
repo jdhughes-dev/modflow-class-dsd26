@@ -2,7 +2,9 @@ name: MODFLOW 6 release
 # Copy of .github/workflows/release.yml from the feat-swi branch of
 # christianlangevin/modflow6, without the extended Windows build and
 # distribution, building from christianlangevin/modflow6 with the uzr-main
-# branch of mjr-deltares/modflow6 merged in.
+# branch of mjr-deltares/modflow6 merged in. The merge is made once by the
+# caller and read from its uzr-merge artifact, a git bundle of the merge
+# commit, so every job builds the same source.
 on:
   # workflow_call event lets this workflow be called either
   # from this repo or the nightly build repo for dev builds
@@ -10,10 +12,6 @@ on:
     inputs:
       ref:
         description: 'Branch, tag or commit SHA to release from. Resolved to a SHA once, so every job builds the same commit even if a branch moves during the run.'
-        required: true
-        type: string
-      uzr_ref:
-        description: 'Branch, tag or commit SHA of mjr-deltares/modflow6 to merge in. Resolved to a SHA once, like ref.'
         required: true
         type: string
       compiler_toolchain:
@@ -64,9 +62,6 @@ on:
       sha:
         description: 'Commit SHA the release was built from'
         value: ${{ jobs.resolve.outputs.sha }}
-      uzr_sha:
-        description: 'Commit SHA of mjr-deltares/modflow6 merged in'
-        value: ${{ jobs.resolve.outputs.uzr_sha }}
       version:
         description: 'Version number used for release'
         value: ${{ jobs.build.outputs.version }}
@@ -81,7 +76,6 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
-      uzr_sha: ${{ steps.resolve.outputs.uzr_sha }}
     steps:
       # pin the ref to a SHA up front. build, docs and dist each check out
       # separately, and docs/dist only start after build and tests finish,
@@ -91,7 +85,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REF: ${{ inputs.ref }}
-          UZR_REF: ${{ inputs.uzr_ref }}
         run: |
           # required inputs can still be passed an empty string, e.g. from an
           # expression whose operands are all empty
@@ -102,13 +95,6 @@ jobs:
           sha=$(gh api "repos/christianlangevin/modflow6/commits/$REF" --jq .sha)
           echo "resolved $REF to $sha"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          if [[ -z "$UZR_REF" ]]; then
-            echo "::error::The uzr_ref input is empty. Pass the branch, tag or commit SHA to merge in."
-            exit 1
-          fi
-          uzr_sha=$(gh api "repos/mjr-deltares/modflow6/commits/$UZR_REF" --jq .sha)
-          echo "resolved $UZR_REF to $uzr_sha"
-          echo "uzr_sha=$uzr_sha" >> "$GITHUB_OUTPUT"
   build:
     name: Build binaries (${{ matrix.os }}, extended=${{ matrix.extended }})
     needs: resolve
@@ -156,18 +142,19 @@ jobs:
           path: modflow6
           ref: ${{ needs.resolve.outputs.sha }}
           fetch-depth: 0
-          filter: blob:none
 
-      - name: Checkout preview build
-        uses: actions/checkout@v7
+      - name: Download uzr-main merge
+        uses: actions/download-artifact@v8
         with:
-          path: preview
-          sparse-checkout: .github
+          name: uzr-merge
+          path: uzr-merge
 
-      - name: Merge uzr-main
-        uses: ./preview/.github/actions/merge-uzr
-        with:
-          sha: ${{ needs.resolve.outputs.uzr_sha }}
+      - name: Checkout uzr-main merge
+        working-directory: modflow6
+        run: |
+          git fetch ../uzr-merge/uzr-merge.bundle HEAD
+          git checkout -q FETCH_HEAD
+          git log -1 --oneline
 
       - name: Checkout modflow6-testmodels
         if: inputs.run_tests == true && !(runner.os == 'Windows' && matrix.extended)
@@ -524,18 +511,19 @@ jobs:
           path: modflow6
           ref: ${{ needs.resolve.outputs.sha }}
           fetch-depth: 0
-          filter: blob:none
 
-      - name: Checkout preview build
-        uses: actions/checkout@v7
+      - name: Download uzr-main merge
+        uses: actions/download-artifact@v8
         with:
-          path: preview
-          sparse-checkout: .github
+          name: uzr-merge
+          path: uzr-merge
 
-      - name: Merge uzr-main
-        uses: ./preview/.github/actions/merge-uzr
-        with:
-          sha: ${{ needs.resolve.outputs.uzr_sha }}
+      - name: Checkout uzr-main merge
+        working-directory: modflow6
+        run: |
+          git fetch ../uzr-merge/uzr-merge.bundle HEAD
+          git checkout -q FETCH_HEAD
+          git log -1 --oneline
 
       - name: Checkout modflow6-examples
         uses: actions/checkout@v7
@@ -717,18 +705,19 @@ jobs:
           path: modflow6
           ref: ${{ needs.resolve.outputs.sha }}
           fetch-depth: 0
-          filter: blob:none
 
-      - name: Checkout preview build
-        uses: actions/checkout@v7
+      - name: Download uzr-main merge
+        uses: actions/download-artifact@v8
         with:
-          path: preview
-          sparse-checkout: .github
+          name: uzr-merge
+          path: uzr-merge
 
-      - name: Merge uzr-main
-        uses: ./preview/.github/actions/merge-uzr
-        with:
-          sha: ${{ needs.resolve.outputs.uzr_sha }}
+      - name: Checkout uzr-main merge
+        working-directory: modflow6
+        run: |
+          git fetch ../uzr-merge/uzr-merge.bundle HEAD
+          git checkout -q FETCH_HEAD
+          git log -1 --oneline
 
       - name: Checkout modflow6-examples
         uses: actions/checkout@v7
