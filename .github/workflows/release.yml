@@ -1,9 +1,9 @@
 name: MODFLOW 6 release
 # Copy of .github/workflows/release.yml from the feat-swi branch of
 # christianlangevin/modflow6, without the extended Windows build and
-# distribution, building from christianlangevin/modflow6 with the uzr-main
+# distribution, building from christianlangevin/modflow6 with the vsf-dev
 # branch of mjr-deltares/modflow6 merged in. The merge is made once by the
-# caller and read from its uzr-merge artifact, a git bundle of the merge
+# caller and read from its vsf-merge artifact, a git bundle of the merge
 # commit, so every job builds the same source.
 on:
   # workflow_call event lets this workflow be called either
@@ -143,16 +143,16 @@ jobs:
           ref: ${{ needs.resolve.outputs.sha }}
           fetch-depth: 0
 
-      - name: Download uzr-main merge
+      - name: Download vsf-dev merge
         uses: actions/download-artifact@v8
         with:
-          name: uzr-merge
-          path: uzr-merge
+          name: vsf-merge
+          path: vsf-merge
 
-      - name: Checkout uzr-main merge
+      - name: Checkout vsf-dev merge
         working-directory: modflow6
         run: |
-          git fetch ../uzr-merge/uzr-merge.bundle HEAD
+          git fetch ../vsf-merge/vsf-merge.bundle HEAD
           git checkout -q FETCH_HEAD
           git log -1 --oneline
 
@@ -264,11 +264,11 @@ jobs:
               filters="not test028_sfr_rewet"
             fi
           fi
-          # the uzr-main spg case has not been updated for the new SPG input
+          # the vsf-dev spg case has not been updated for the new SPG input
           if [[ "$filters" != "" ]]; then
-            filters="$filters and not (test_gwf_uzr_wt and spg)"
+            filters="$filters and not (test_gwf_vsf_wt and spg)"
           else
-            filters="not (test_gwf_uzr_wt and spg)"
+            filters="not (test_gwf_vsf_wt and spg)"
           fi
           echo "filters=$filters" >> $GITHUB_OUTPUT
 
@@ -512,16 +512,16 @@ jobs:
           ref: ${{ needs.resolve.outputs.sha }}
           fetch-depth: 0
 
-      - name: Download uzr-main merge
+      - name: Download vsf-dev merge
         uses: actions/download-artifact@v8
         with:
-          name: uzr-merge
-          path: uzr-merge
+          name: vsf-merge
+          path: vsf-merge
 
-      - name: Checkout uzr-main merge
+      - name: Checkout vsf-dev merge
         working-directory: modflow6
         run: |
-          git fetch ../uzr-merge/uzr-merge.bundle HEAD
+          git fetch ../vsf-merge/vsf-merge.bundle HEAD
           git checkout -q FETCH_HEAD
           git log -1 --oneline
 
@@ -706,16 +706,16 @@ jobs:
           ref: ${{ needs.resolve.outputs.sha }}
           fetch-depth: 0
 
-      - name: Download uzr-main merge
+      - name: Download vsf-dev merge
         uses: actions/download-artifact@v8
         with:
-          name: uzr-merge
-          path: uzr-merge
+          name: vsf-merge
+          path: vsf-merge
 
-      - name: Checkout uzr-main merge
+      - name: Checkout vsf-dev merge
         working-directory: modflow6
         run: |
-          git fetch ../uzr-merge/uzr-merge.bundle HEAD
+          git fetch ../vsf-merge/vsf-merge.bundle HEAD
           git checkout -q FETCH_HEAD
           git log -1 --oneline
 

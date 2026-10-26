@@ -9,9 +9,9 @@ neither of which has been merged into MODFLOW 6:
 - the `feat-swi` branch of
   [christianlangevin/modflow6](https://github.com/christianlangevin/modflow6/tree/feat-swi),
   the Seawater Intrusion (SWI) Package, and
-- the `uzr-main` branch of
-  [mjr-deltares/modflow6](https://github.com/mjr-deltares/modflow6/tree/uzr-main),
-  the UZR Package, which solves the Richards equation for unsaturated flow,
+- the `vsf-dev` branch of
+  [mjr-deltares/modflow6](https://github.com/mjr-deltares/modflow6/tree/vsf-dev),
+  the VSF Package, which solves the Richards equation for unsaturated flow,
 
 merged into a single `mf6`.
 
@@ -20,11 +20,11 @@ The build uses the MODFLOW 6 release workflow in developmode, as the
 binaries for Linux and Windows built with the Intel classic compiler, binaries for
 macOS on Apple silicon built with gfortran, the tests, and the documentation.
 Each build is posted under [Releases](../../releases), tagged with the UTC date
-and time of the build and the two commits (`YYYYMMDD-HHMM-<feat-swi>-<uzr-main>`);
+and time of the build and the two commits (`YYYYMMDD-HHMM-<feat-swi>-<vsf-dev>`);
 the newest is marked Latest, and the last 10 are kept.
 
-`uzr-main` is merged into `feat-swi` once, in the first job, by the
-`.github/actions/merge-uzr` action; the merge commit is passed to the build,
+`vsf-dev` is merged into `feat-swi` once, in the first job, by the
+`.github/actions/merge-vsf` action; the merge commit is passed to the build,
 documentation, and distribution jobs as a git bundle, so every platform builds
 the same source. The two branches conflict in
 `src/Model/GroundWaterFlow/gwf.f90`; the resolution is recorded in
@@ -38,7 +38,7 @@ git clone -b feat-swi https://github.com/christianlangevin/modflow6.git
 cd modflow6
 mkdir -p .git/rr-cache && cp -R ../.github/rr-cache/. .git/rr-cache/
 git config rerere.enabled true
-git pull --no-rebase https://github.com/mjr-deltares/modflow6.git uzr-main
+git pull --no-rebase https://github.com/mjr-deltares/modflow6.git vsf-dev
 # resolve the conflicts, then
 git add -A && git commit --no-edit
 cp -R .git/rr-cache/. ../.github/rr-cache/
@@ -57,8 +57,8 @@ curl -sL https://raw.githubusercontent.com/christianlangevin/modflow6/feat-swi/.
 
 and make the same changes again.
 
-The `wt-uzr-spg` case of `autotest/test_gwf_uzr_wt.py` is skipped, by the test
-filters in `release.yml`, because `uzr-main` changed the SPG input without
+The `wt-vsf-spg` case of `autotest/test_gwf_vsf_wt.py` is skipped, by the test
+filters in `release.yml`, because `vsf-dev` changed the SPG input without
 updating it. Remove the filter once the test is fixed on the branch.
 
 The workflow runs nightly in mjr-deltares/modflow-class-dsd26 and builds only
