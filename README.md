@@ -11,7 +11,8 @@ neither of which has been merged into MODFLOW 6:
   the Seawater Intrusion (SWI) Package, and
 - the `vsf-dev` branch of
   [mjr-deltares/modflow6](https://github.com/mjr-deltares/modflow6/tree/vsf-dev),
-  the VSF Package, which solves the Richards equation for unsaturated flow,
+  the Variably Saturated Flow (VSF) Package, which solves the Richards equation
+  for unsaturated flow,
 
 merged into a single `mf6`.
 
