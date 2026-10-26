@@ -12,7 +12,8 @@ neither of which has been merged into MODFLOW 6:
 - the `vsf-dev` branch of
   [mjr-deltares/modflow6](https://github.com/mjr-deltares/modflow6/tree/vsf-dev),
   the Variably Saturated Flow (VSF) Package, which solves the Richards equation
-  for unsaturated flow,
+  for unsaturated flow, which is built from `uzr-main`, the name the branch had
+  before, until `vsf-dev` is pushed,
 
 merged into a single `mf6`.
 
