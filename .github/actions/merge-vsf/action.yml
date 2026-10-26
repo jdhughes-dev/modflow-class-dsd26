@@ -1,0 +1,38 @@
+name: Merge vsf-dev
+description: Merge the vsf-dev branch of mjr-deltares/modflow6 into a modflow6 checkout, resolving known conflicts with the rerere cache in .github/rr-cache.
+inputs:
+  sha:
+    description: 'vsf-dev commit to merge'
+    required: true
+  path:
+    description: 'Path of the modflow6 checkout, which needs full history'
+    required: false
+    default: modflow6
+runs:
+  using: composite
+  steps:
+    - name: Merge vsf-dev
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      env:
+        SHA: ${{ inputs.sha }}
+      run: |
+        rr_cache="$(cd "$GITHUB_ACTION_PATH/../../rr-cache" && pwd)"
+        git_dir="$(git rev-parse --git-dir)"
+        mkdir -p "$git_dir/rr-cache"
+        cp -R "$rr_cache/." "$git_dir/rr-cache/"
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git fetch https://github.com/mjr-deltares/modflow6.git "$SHA"
+
+        # the merge stops even when rerere resolves every conflict
+        if ! git -c rerere.enabled=true -c rerere.autoupdate=true merge --no-edit FETCH_HEAD; then
+          unmerged=$(git diff --name-only --diff-filter=U)
+          if [[ -n "$unmerged" ]]; then
+            echo "::error::vsf-dev conflicts with no recorded resolution in:"
+            echo "$unmerged"
+            exit 1
+          fi
+          git commit --no-edit
+        fi
+        git log -1 --oneline
