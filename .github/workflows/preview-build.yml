@@ -1,0 +1,151 @@
+name: MODFLOW 6 SWI and UZR preview build
+# Builds the developmode distribution of the feat-swi branch of
+# christianlangevin/modflow6, the SWI Package development branch, with the
+# uzr-main branch of mjr-deltares/modflow6, the UZR Package development branch,
+# merged in, the same way the MODFLOW 6 nightly build does for develop.
+concurrency:
+  group: preview-build
+  cancel-in-progress: true
+on:
+  schedule:
+    - cron: '0 7 * * *' # nightly; skipped when neither branch has changed
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Build even if neither branch has changed since the last release'
+        required: false
+        type: boolean
+        default: false
+permissions:
+  contents: read
+env:
+  REPO: christianlangevin/modflow6
+  BRANCH: feat-swi
+  UZR_REPO: mjr-deltares/modflow6
+  UZR_BRANCH: uzr-main
+jobs:
+  check:
+    name: Check for changes
+    runs-on: ubuntu-22.04
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+      uzr_sha: ${{ steps.sha.outputs.uzr_sha }}
+      version: ${{ steps.version.outputs.version }}
+      build: ${{ steps.compare.outputs.build }}
+    steps:
+      - name: Checkout modflow6
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.REPO }}
+          ref: ${{ env.BRANCH }}
+          path: modflow6
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Checkout preview build
+        uses: actions/checkout@v7
+        with:
+          path: preview
+          sparse-checkout: .github
+
+      - name: Get commits
+        id: sha
+        working-directory: modflow6
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          uzr_sha=$(git ls-remote "https://github.com/${UZR_REPO}.git" "refs/heads/${UZR_BRANCH}" | cut -f 1)
+          echo "uzr_sha=$uzr_sha" >> "$GITHUB_OUTPUT"
+
+      # fail before building if the branches conflict with no recorded resolution
+      - name: Merge uzr-main
+        uses: ./preview/.github/actions/merge-uzr
+        with:
+          sha: ${{ steps.sha.outputs.uzr_sha }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install Python packages
+        run: pip install pytest PyYAML filelock modflow-devtools packaging
+
+      - name: Get version
+        id: version
+        working-directory: modflow6/distribution
+        run: echo "version=$(python update_version.py -g)" >> "$GITHUB_OUTPUT"
+
+      - name: Compare with the last release
+        id: compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.sha.outputs.sha }}
+          UZR_SHA: ${{ steps.sha.outputs.uzr_sha }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          suffix="${SHA:0:7}-${UZR_SHA:0:7}"
+          tags=$(gh release list -R "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '.[].tagName')
+          if [[ "$FORCE" == "true" ]] || ! grep -q -- "-${suffix}$" <<< "$tags"; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "building $SHA with $UZR_SHA"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "$SHA with $UZR_SHA was already released"
+          fi
+
+  make_dist:
+    name: Make developmode distribution
+    needs: check
+    if: needs.check.outputs.build == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      ref: ${{ needs.check.outputs.sha }}
+      uzr_ref: ${{ needs.check.outputs.uzr_sha }}
+      releasemode: false
+      run_tests: true
+      version: ${{ needs.check.outputs.version }}
+
+  release:
+    name: Create release
+    needs:
+      - check
+      - make_dist
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Collect assets
+        run: |
+          mkdir assets
+          find artifacts -path 'artifacts/mf*' -name '*.zip' -exec cp {} assets/ \;
+          cp artifacts/doc/*.pdf assets/
+          ls -l assets
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.check.outputs.sha }}
+          UZR_SHA: ${{ needs.check.outputs.uzr_sha }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          # the UTC time keeps two builds on one day apart and in order
+          tag="$(date -u +%Y%m%d-%H%M)-${SHA:0:7}-${UZR_SHA:0:7}"
+          cat > body.md << EOF
+          Developmode build of MODFLOW ${VERSION} from the [${BRANCH}](https://github.com/${REPO}/tree/${BRANCH}) branch of ${REPO} at [${SHA:0:10}](https://github.com/${REPO}/commit/${SHA}), the development branch for the SWI Package, with the [${UZR_BRANCH}](https://github.com/${UZR_REPO}/tree/${UZR_BRANCH}) branch of ${UZR_REPO} at [${UZR_SHA:0:10}](https://github.com/${UZR_REPO}/commit/${UZR_SHA}), the development branch for the UZR Package, merged in.
+
+          This is not a MODFLOW 6 release. It is provisional and will be replaced as the branches change.
+          EOF
+          gh release create "$tag" assets/* -R "$GITHUB_REPOSITORY" \
+            --title "${tag} preview build" --notes-file body.md --latest
+
+      - name: Delete older releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list -R "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '.[10:][].tagName' |
+            xargs -r -n 1 gh release delete --cleanup-tag --yes -R "$GITHUB_REPOSITORY"
