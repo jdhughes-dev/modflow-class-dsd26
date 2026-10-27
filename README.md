@@ -1,6 +1,18 @@
 # Course Description
 Class materials and schedule for the 2026 MODFLOW 6 advanced class at the DSD in Delft
 
+[![Class environment model run](https://github.com/mjr-deltares/modflow-class-dsd26/actions/workflows/model-run.yml/badge.svg)](https://github.com/mjr-deltares/modflow-class-dsd26/actions/workflows/model-run.yml)
+
+## Installing class software
+
+The class uses a [pixi](https://pixi.sh) environment with Python, FloPy, and a
+MODFLOW 6 built with the Seawater Intrusion (SWI) and Variably Saturated Flow
+(VSF) packages. Follow [`INSTALL.md`](INSTALL.md) to install it: it covers
+installing git and pixi, downloading the class materials, setting up the
+environment, using it from JupyterLab or VS Code, updating it, and the
+computers it works on. The models used in the class are
+described in [`examples/data/README.md`](examples/data/README.md).
+
 ## MODFLOW 6 preview build
 
 Developmode builds of MODFLOW 6 with two development branches used in the class,
