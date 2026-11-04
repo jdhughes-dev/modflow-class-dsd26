@@ -1,6 +1,27 @@
 # Course Description
 Class materials and schedule for the 2026 MODFLOW 6 advanced class at the DSD in Delft
 
+## Class Schedule
+
+08:30 to 09:00 — ARRIVAL \
+09:00 to 09:05 — Welcome and introductions \
+09:05 to 09:20 — MODFLOW 6 and PEST++ status and plans \
+09:20 to 10:20 — Advanced packages (incl. setting up class environment) \
+10:20 to 10:40 — PEST++ and Iterative Ensemble Smoothing (part 1) \
+10:40 to 11:00 — COFFEE BREAK \
+11:00 to 12:00 — PEST++ and Iterative Ensemble Smoothing (part 2) \
+12:00 to 12:25 — Variably Saturated Flow (part 1) \
+12.25 to 12.30 — GROUP PICTURE \
+12:30 to 13:30 — LUNCH BREAK \
+13:30 to 14:15 — Variably Saturated Flow (part 2) \
+14:15 to 15:00 — The SWI package for seawater intrusion (part 1) \
+15:00 to 15:20 — COFFEE BREAK \
+15:20 to 15:40 — The SWI package for seawater intrusion (part 2) \
+15:40 to 16:00 — The MODFLOW API \
+16:00 to 16:30 — MODFLOW 6 and the iMOD Suite \
+16:30 to 17:00 — Wrap-up \
+17:00 to 18:00 — DRINKS
+
 [![Class environment model run](https://github.com/mjr-deltares/modflow-class-dsd26/actions/workflows/model-run.yml/badge.svg)](https://github.com/mjr-deltares/modflow-class-dsd26/actions/workflows/model-run.yml)
 
 ## Installing class software
