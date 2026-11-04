@@ -1,3 +1,5 @@
+[![Class environment model run](https://github.com/mjr-deltares/modflow-class-dsd26/actions/workflows/model-run.yml/badge.svg)](https://github.com/mjr-deltares/modflow-class-dsd26/actions/workflows/model-run.yml)
+
 # Course Description
 Class materials and schedule for the 2026 MODFLOW 6 advanced class at the DSD in Delft
 
@@ -21,8 +23,6 @@ Class materials and schedule for the 2026 MODFLOW 6 advanced class at the DSD in
 16:00 to 16:30 — MODFLOW 6 and the iMOD Suite \
 16:30 to 17:00 — Wrap-up \
 17:00 to 18:00 — DRINKS
-
-[![Class environment model run](https://github.com/mjr-deltares/modflow-class-dsd26/actions/workflows/model-run.yml/badge.svg)](https://github.com/mjr-deltares/modflow-class-dsd26/actions/workflows/model-run.yml)
 
 ## Installing class software
 
