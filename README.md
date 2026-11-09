@@ -7,7 +7,7 @@ Class materials and schedule for the 2026 MODFLOW 6 advanced class at the DSD in
 
 **08:30 to 09:00 — ARRIVAL** \
 09:00 to 09:05 — Welcome and introductions \
-09:05 to 09:20 — MODFLOW 6 and PEST++ status and plans \
+09:05 to 09:20 — MODFLOW 6 status and plans \
 09:20 to 10:20 — Advanced packages (incl. setting up class environment) \
 10:20 to 10:40 — PEST++ and Iterative Ensemble Smoothing (part 1) \
 **10:40 to 11:00 — COFFEE BREAK** \
