@@ -45,6 +45,23 @@ def true_heads(kind):
     return df
 
 
+def true_observations():
+    """Every observed series in the truth, one column per observation, by time (days).
+
+    The columns are the model's observation names in lower case: the heads at
+    the observation wells (``wt01-i2-j17`` ...), the flows to the stream and
+    the sea (``riv-swgw``, ``coast-swgw``), the lake stage, and the heads at
+    the pumping and scenario wells (``reilly``, ``vc``, ``dw``).
+    """
+    ds = xr.open_dataset(TRUTH, decode_times=False)
+    names = [v for v in ds.data_vars if v.startswith("obs_")]
+    df = pd.DataFrame(
+        {v[4:].lower(): ds[v].values for v in names}, index=ds["time"].values
+    )
+    df.index.name = "time"
+    return df
+
+
 def simulated_heads(ws, kind):
     """Simulated heads at the observation wells, read from the observation output."""
     return pd.read_csv(pl.Path(ws) / f"sv.gwf.{kind}.csv", index_col=0)
@@ -111,3 +128,77 @@ def record_sfr_discharge(path, rate, discharge):
     with open(path, "wb") as f:
         pickle.dump(runs, f)
     return runs
+
+
+def restore_lake_k(k_file="sv.npf_k_layer1.txt", lake_file="lake_k.txt"):
+    """Put the lake's K back into layer 1 after the K parameters are applied.
+
+    `lake_file` holds the lake's K in the lake cells and 0 elsewhere. PstFrom copies
+    this function into forward_run.py, so it does its own import.
+    """
+    import numpy as np
+
+    k = np.loadtxt(k_file)
+    lake = np.loadtxt(lake_file)
+    k[lake > 0.0] = lake[lake > 0.0]
+    np.savetxt(k_file, k, fmt="%15.6E")
+
+
+def make_homogeneous(gwf, lake_k=1000.0):
+    """Give each layer one value of every property, and recharge one rate per period.
+
+    K, K33, SS, and SY become the geometric mean of the layer's active cells, and
+    the recharge of each period, if the model has RCH, the mean rate of the cells
+    that receive it. The
+    lake cells in layer 1, whose K is above ``lake_k``, keep their values. This
+    changes the model in memory; write it afterward.
+    """
+    import numpy as np
+
+    idomain = gwf.dis.idomain.array
+    lake = np.zeros(idomain.shape, dtype=bool)
+    lake[0] = gwf.npf.k.array[0] > lake_k
+    active = (idomain > 0) & ~lake
+    for data in [gwf.npf.k, gwf.npf.k33, gwf.sto.ss, gwf.sto.sy]:
+        values = data.array.copy()
+        for k in range(values.shape[0]):
+            mean = np.exp(np.log(values[k][active[k]]).mean())
+            values[k][~lake[k]] = mean
+        data.set_data(values)
+
+    if gwf.get_package("rch") is None:
+        return  # the advanced model has UZF, whose inputs are already uniform
+    recharge = {}
+    for kper, rate in gwf.rch.recharge.get_data().items():
+        rate = rate.copy()
+        wet = rate > 0.0
+        rate[wet] = rate[wet].mean()
+        recharge[kper] = rate
+    gwf.rch.recharge.set_data(recharge)
+
+
+def stream_flux_predictions(
+    obs_file, column="RIV-SWGW", history_end=19723.0, out_file="sv.predictions.csv"
+):
+    """Write the groundwater discharge to the stream: steady state, history, future.
+
+    ``obs_file`` is the stream observation file MODFLOW 6 writes (RIV in the base
+    model, SFR in the advanced model), and ``column`` its aquifer-stream flow, which
+    is negative when groundwater flows to the stream. The three predictions (m3/d)
+    are the discharge of the steady state, the first output time; the smallest
+    discharge of the history, through ``history_end``; and the smallest of the
+    future after it. PstFrom copies this function into forward_run.py, so it does
+    its own import.
+    """
+    import pandas as pd
+
+    flows = pd.read_csv(obs_file, index_col=0)
+    discharge = -flows[column]  # groundwater to the stream, positive
+    history = discharge.loc[discharge.index <= history_end]
+    future = discharge.loc[discharge.index > history_end]
+    predictions = pd.DataFrame(
+        {"discharge": [discharge.iloc[0], history.min(), future.min()]},
+        index=pd.Index(["steadystate", "minhistory", "minfuture"], name="prediction"),
+    )
+    predictions.to_csv(out_file)
+    return predictions
