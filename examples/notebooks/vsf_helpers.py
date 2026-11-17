@@ -6,9 +6,11 @@ the synthetic-valley model:
 
 - ``SOILS`` and the van Genuchten functions give the soil-characteristic curves.
 - ``load_valley`` loads the base valley model that the notebook starts from.
+- ``lake_stage`` and ``set_lake`` hold the lake at the base model's level.
 - ``refine_top_layer`` splits layer 1 into thin sublayers and remaps the grid,
   the aquifer properties, and every boundary package onto the finer grid.
 - ``water_table`` turns a VSF pressure-head field into a water-table surface.
+- ``aquifer_budget`` runs ZONEBUDGET for the aquifer outside the lake.
 
 Units follow the synthetic-valley model: meters and days.
 """
@@ -89,9 +91,11 @@ def water_table(head, phead):
     """
     nlay, nrow, ncol = head.shape
     wt = np.full((nrow, ncol), np.nan)
+    # inactive and pass-through cells are written as 1e30, which is not saturated
+    wet = (phead >= 0.0) & (phead < 1e29)
     for i in range(nrow):
         for j in range(ncol):
-            sat = np.nonzero(phead[:, i, j] >= 0.0)[0]
+            sat = np.nonzero(wet[:, i, j])[0]
             if sat.size:
                 wt[i, j] = head[sat[0], i, j]
     return np.ma.masked_invalid(wt)
@@ -133,21 +137,75 @@ def _rebuild_boundaries(gwf, riv_layer=None, ghb_layer=None):
 def load_valley(ws):
     """Load the base synthetic-valley model, ready to be written to ``ws``.
 
-    Two things are left out so the notebook can concentrate on the unsaturated
-    zone: the lake evapotranspiration (EVT), and the observation packages, which
-    point at cell layers that change when the grid is refined. Recharge, the
-    river, the coastal general-head boundary, and the pumping wells stay.
+    Evapotranspiration (EVT), the land-surface seepage drains (DRN), and the
+    observation packages are left out. Recharge, the river, the coastal
+    general-head boundary, and the pumping wells stay.
     """
     sim = flopy.mf6.MFSimulation.load(
         sim_name="sv", sim_ws=str(BASE_MODEL), verbosity_level=0
     )
     gwf = sim.get_model("sv")
-    for name in ("EVT_0", "GWF-OBS", "GHB_OBS", "RIV_OBS"):
+    for name in ("EVT_0", "DRN-1", "GWF-OBS", "GHB_OBS", "RIV_OBS"):
         if name in gwf.get_package_list():
             gwf.remove_package(name)
     _rebuild_boundaries(gwf)
     sim.set_sim_path(str(ws))
     return sim, gwf
+
+
+# terms of the aquifer budget and the ZONEBUDGET names they come from
+BUDGET_TERMS = {
+    "RCH": "RCH",
+    "LAKE": "ZONE_2",
+    "RIV": "RIV",
+    "GHB": "GHB",
+    "STO-SY": "STO_SY",
+    "STO-UZ": "STO_UZ",
+    "STO-SS": "STO_SS",
+    "WEL": "PWELL_WEL",
+    "WEL2": "PREDICTION_WEL",
+}
+
+
+def lake_cells(gwf):
+    """Cells of the lake, which the valley builds from very permeable cells."""
+    return gwf.npf.k.array > 1.0e4
+
+
+def lake_stage(ws, gwf):
+    """Lake level (m) at the end of every time step of a base-valley run.
+
+    Returns ``(times, stages)``; the level is the mean head in the lake cells of
+    layer 1.
+    """
+    lake = lake_cells(gwf)[0]
+    heads = flopy.utils.HeadFile(str(pl.Path(ws) / "sv.hds"))
+    times = np.array(heads.get_times())
+    stages = np.array([heads.get_data(totim=t)[0][lake].mean() for t in times])
+    return times, stages
+
+
+def set_lake(gwf, times, stages):
+    """Hold every lake cell at the lake level with constant heads (CHD).
+
+    ``times`` and ``stages`` are the ends of the time steps and the level at each,
+    as from ``lake_stage``; the model must use the same time steps. Each level is
+    held through its time step.
+    """
+    cells = [tuple(int(v) for v in c) for c in np.argwhere(lake_cells(gwf))]
+    chd = flopy.mf6.ModflowGwfchd(
+        gwf, stress_period_data={0: [[c, "stage"] for c in cells]}, pname="CHD-LAKE"
+    )
+    # MODFLOW 6 averages a time series over each time step, so a stepwise series
+    # that starts each level at the start of its step gives that level exactly
+    starts = [0.0, *times[:-1]]
+    series = [(float(t), float(h)) for t, h in zip(starts, stages)]
+    chd.ts.initialize(
+        filename="sv.lake.ts",
+        timeseries=[*series, (float(times[-1]), float(stages[-1]))],
+        time_series_namerecord="stage",
+        interpolation_methodrecord="stepwise",
+    )
 
 
 def set_substeps(sim, nstp):
@@ -176,9 +234,9 @@ def refine_top_layer(sim, target_dz=0.25, refine_depth=2.0):
     discretization, the starting heads, the hydraulic conductivity and storage,
     recharge (still on the top cell), and the river, coastal general-head
     boundary, and wells. A boundary that was in layer 1 goes in the sublayer that
-    brackets its control elevation, so head-dependent boundaries keep working
-    when the top of the refined zone is dry. Returns the number of refined
-    sublayers ``n_ref``; the transition cell is layer ``n_ref``.
+    brackets its control elevation, so it exchanges water with the aquifer
+    there. Returns the number of refined sublayers ``n_ref``; the transition
+    cell is layer ``n_ref``.
     """
     gwf = sim.get_model("sv")
     dis = gwf.dis
@@ -238,12 +296,7 @@ def refine_top_layer(sim, target_dz=0.25, refine_depth=2.0):
     )
     gwf.ic.strt.set_data(stack(strt))
     gwf.npf.k.set_data(stack(k))
-    # The lake cells use a vertical conductivity ~2e6 times k to keep the lake
-    # surface flat. In thin sublayers that makes the vertical conductance so large
-    # it wrecks the nonlinear Richards solve, so cap the ratio at isotropic.
-    k33_new = stack(k33)
-    k33_new[: n_ref + 1] = np.minimum(k33_new[: n_ref + 1], 1.0)
-    gwf.npf.k33.set_data(k33_new)
+    gwf.npf.k33.set_data(stack(k33))
     gwf.sto.ss.set_data(stack(ss))
     gwf.sto.sy.set_data(stack(sy))
 
@@ -288,3 +341,34 @@ def read_water_tables(ws, vsf, times=None):
     else:
         tables = [np.ma.masked_greater(heads.get_data(totim=t)[0], 1e29) for t in times]
     return np.array(times), np.ma.array(tables)
+
+
+def aquifer_budget(ws, gwf):
+    """Water budget of the aquifer outside the lake, at every time step.
+
+    Runs ZONEBUDGET (zbud6) on the budget file in ``ws`` with the lake cells as a
+    zone of their own. Returns a DataFrame indexed by time (days) with the stress
+    period ``kper`` and the inflow and outflow rates (m3/d) of each term in
+    ``BUDGET_TERMS`` as ``<term>_IN`` and ``<term>_OUT``; ``LAKE`` is the flow
+    between the aquifer and the lake cells.
+    """
+    zones = np.where(lake_cells(gwf), 2, 1)
+    zb = gwf.output.zonebudget(zones)
+    zb.change_model_ws(str(ws))
+    zb.write_input()
+    success, _ = zb.run_model(silent=True)
+    assert success, "ZONEBUDGET did not run"
+    table = zb.get_dataframes(net=False, pivot=True, start_datetime=None)
+    table = table[table["zone"] == 1].set_index("totim").sort_index()
+    budget = table[["kper"]].copy()
+    for term, name in BUDGET_TERMS.items():
+        if term == "LAKE":
+            budget["LAKE_IN"], budget["LAKE_OUT"] = (
+                table["FROM_ZONE_2"],
+                table["TO_ZONE_2"],
+            )
+        else:
+            for side in ("IN", "OUT"):
+                column = f"{name}_{side}"
+                budget[f"{term}_{side}"] = table[column] if column in table else 0.0
+    return budget
