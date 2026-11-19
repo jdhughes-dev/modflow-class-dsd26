@@ -214,3 +214,184 @@ def stream_flux_predictions(
     )
     predictions.to_csv(out_file)
     return predictions
+
+
+# base-model layer (counted from 0) -> layer of the three-layer model: the two
+# upper-aquifer layers and the two lower-aquifer layers are each combined
+THREE_LAYER_MAP = {0: 0, 1: 0, 2: 1, 3: 2, 4: 2}
+
+
+def _merge_cells(recarray, sum_fields=()):
+    """Move list-input cells to the three-layer model.
+
+    Cells that land in the same three-layer cell are combined, adding the
+    fields in ``sum_fields`` (a conductance or a pumping rate).
+    """
+    merged = {}
+    for rec in recarray:
+        k, i, j = rec["cellid"]
+        cellid = (THREE_LAYER_MAP[k], i, j)
+        values = {n: rec[n] for n in rec.dtype.names if n != "cellid"}
+        if cellid in merged:
+            for n in sum_fields:
+                merged[cellid][n] += values[n]
+        else:
+            merged[cellid] = values
+    return [(cellid, *values.values()) for cellid, values in merged.items()]
+
+
+def build_three_layer(ws):
+    """Write the base model with three layers to ``ws`` and load it.
+
+    Layers 1 and 2 (the upper aquifer) become layer 1, the clay stays as layer
+    2, and layers 4 and 5 (the lower aquifer) become layer 3. Each combined
+    layer takes the properties of its upper layer, which in the base model are
+    the same for both, except that the lake cells of layer 1 now reach the
+    bottom of the upper aquifer. Layer 1 stays convertible, as in the base
+    model. The coastal GHB conductances and the pumping rates of cells that are
+    combined are added together.
+    """
+    ws = pl.Path(ws)
+    if ws.exists():
+        shutil.rmtree(ws)
+    base = flopy.mf6.MFSimulation.load(sim_ws=BASE_MODEL, verbosity_level=0)
+    b = base.get_model("sv")
+    keep = [0, 2, 3]  # base layer whose properties each new layer takes
+    bottom = [1, 2, 4]  # base layer whose bottom is each new layer's bottom
+
+    sim = flopy.mf6.MFSimulation(sim_name="sv", sim_ws=ws)
+    flopy.mf6.ModflowTdis(
+        sim,
+        time_units="days",
+        nper=base.tdis.nper.data,
+        perioddata=base.tdis.perioddata.array.tolist(),
+    )
+    ims = base.get_package("ims")
+    flopy.mf6.ModflowIms(
+        sim,
+        print_option="summary",
+        complexity=ims.complexity.data,
+        outer_dvclose=ims.outer_dvclose.data,
+        outer_maximum=ims.outer_maximum.data,
+        inner_maximum=ims.inner_maximum.data,
+        inner_dvclose=ims.inner_dvclose.data,
+        linear_acceleration="bicgstab",
+        # plain ILU preconditioner; with SWI, the modified ILU of MODERATE
+        # (relaxation 0.97) stalls the linear solve for some sea levels
+        relaxation_factor=0.0,
+    )
+    gwf = flopy.mf6.ModflowGwf(
+        sim, modelname="sv", newtonoptions="newton under_relaxation", save_flows=True
+    )
+    botm = b.dis.botm.array
+    flopy.mf6.ModflowGwfdis(
+        gwf,
+        length_units="meters",
+        nlay=3,
+        nrow=b.dis.nrow.data,
+        ncol=b.dis.ncol.data,
+        delr=b.dis.delr.array,
+        delc=b.dis.delc.array,
+        top=b.dis.top.array,
+        botm=botm[bottom],
+        idomain=b.dis.idomain.array[keep],
+    )
+    flopy.mf6.ModflowGwfic(gwf, strt=b.ic.strt.array[keep])
+    flopy.mf6.ModflowGwfnpf(
+        gwf,
+        icelltype=b.npf.icelltype.array[keep],
+        k=b.npf.k.array[keep],
+        k33=b.npf.k33.array[keep],
+        k33overk=True,
+        save_specific_discharge=True,
+    )
+    flopy.mf6.ModflowGwfsto(
+        gwf,
+        iconvert=b.sto.iconvert.array[keep],
+        ss=b.sto.ss.array[keep],
+        sy=b.sto.sy.array[keep],
+        steady_state={0: True},
+        transient={1: True},
+    )
+
+    # recharge, evapotranspiration, the river, and the drains are in layer 1
+    spd = b.rch.stress_period_data.get_data()
+    flopy.mf6.ModflowGwfrch(
+        gwf,
+        boundnames=True,
+        stress_period_data={kper: d.tolist() for kper, d in spd.items()},
+    )
+    spd = b.evt.stress_period_data.get_data()
+    flopy.mf6.ModflowGwfevt(
+        gwf, stress_period_data={kper: d.tolist() for kper, d in spd.items()}
+    )
+    spd = b.riv.stress_period_data.get_data()
+    flopy.mf6.ModflowGwfriv(
+        gwf,
+        boundnames=True,
+        stress_period_data={kper: d.tolist() for kper, d in spd.items()},
+        observations={"sv.riv.obs.csv": [("riv-swgw", "riv", "riv")]},
+    )
+    # seepage drains at the land surface, in layer 1
+    spd = b.drn.stress_period_data.get_data()
+    flopy.mf6.ModflowGwfdrn(
+        gwf,
+        auxiliary=["ddrn"],
+        auxdepthname="ddrn",
+        boundnames=True,
+        stress_period_data={kper: d.tolist() for kper, d in spd.items()},
+    )
+
+    # the sea, with the elevation auxiliary variable reset to the middle of the
+    # part of each combined cell that is below sea level
+    top = gwf.dis.top.array
+    new_botm = gwf.dis.botm.array
+    ghb = []
+    for cellid, bhead, cond, _, conc, name in _merge_cells(
+        b.ghb.stress_period_data.get_data(0), sum_fields=("cond",)
+    ):
+        k, i, j = cellid
+        cell_top = top[i, j] if k == 0 else new_botm[k - 1, i, j]
+        elevation = 0.5 * (min(cell_top, 0.0) + new_botm[k, i, j])
+        ghb.append((cellid, bhead, cond, elevation, conc, name))
+    flopy.mf6.ModflowGwfghb(
+        gwf,
+        auxiliary=["elevation", "concentration"],
+        boundnames=True,
+        print_flows=True,
+        stress_period_data={0: ghb},
+        observations={"sv.ghb.obs.csv": [("coast-swgw", "ghb", "coast")]},
+    )
+
+    # the pumping wells, in the lower aquifer
+    for pname in ("pwell", "prediction"):
+        spd = b.get_package(pname).stress_period_data.get_data()
+        flopy.mf6.ModflowGwfwel(
+            gwf,
+            pname=pname,
+            filename=f"sv.{pname}.wel",
+            boundnames=pname == "pwell",
+            stress_period_data={
+                kper: _merge_cells(d, sum_fields=("q",))
+                for kper, d in spd.items()
+                if d is not None
+            },
+        )
+
+    # the observation wells, in their new layers
+    continuous = {}
+    for fname, recs in b.get_package("gwf-obs").continuous.data.items():
+        continuous[fname] = [
+            (r["obsname"], "head", (THREE_LAYER_MAP[r["id"][0]], *r["id"][1:]))
+            for r in recs
+        ]
+    flopy.mf6.ModflowUtlobs(gwf, continuous=continuous, filename="sv.gwf.obs")
+    flopy.mf6.ModflowGwfoc(
+        gwf,
+        head_filerecord="sv.hds",
+        budget_filerecord="sv.cbc",
+        budgetcsv_filerecord="sv-budget.csv",
+        saverecord=[("head", "all"), ("budget", "all")],
+    )
+    sim.write_simulation(silent=True)
+    return flopy.mf6.MFSimulation.load(sim_ws=ws, verbosity_level=0)
